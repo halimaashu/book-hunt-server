@@ -1,7 +1,7 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import { MongoClient, ServerApiVersion } from "mongodb";
+import { MongoClient, ObjectId, ServerApiVersion } from "mongodb";
 
 dotenv.config();
 
@@ -211,25 +211,23 @@ async function runStableAPIConnect() {
   `);
     });
 
-// this api for get all users
-app.get("/users",async(req,res)=>{
-  try{
-    const users=await userCollection.find().toArray()
-    res.status(200).json({
-      message:"Access user success full",
-      data:users
-    })
+    // this api for get all users
+    app.get("/users", async (req, res) => {
+      try {
+        const users = await userCollection.find().toArray();
+        res.status(200).json({
+          message: "Access user success full",
+          data: users,
+        });
+      } catch (error) {
+        console.log(error);
+        res.status(500).json({
+          message: "failed to fetch all users",
+        });
+      }
+    });
 
-  }catch(error){
-    console.log(error)
-    res.status(500).json({
-      message:"failed to fetch all users"
-    })
-  }
-})
-
-
-    // This api for Added a new book 
+    // This api for Added a new book
     app.post("/book", async (req, res) => {
       try {
         const bookData = req.body;
@@ -247,18 +245,56 @@ app.get("/users",async(req,res)=>{
       }
     });
     // this api made for gate all books
-    app.get("/books",async(req,res)=>{
-      try{
-        const data=await bookCollection.find().toArray()
-        res.status(200).send(data)
-
-      }catch(error){
-        console.log(error)
+    app.get("/books", async (req, res) => {
+      try {
+        const data = await bookCollection.find().toArray();
+        res.status(200).send(data);
+      } catch (error) {
+        console.log(error);
         res.status(500).json({
-          message:"Failed to Loaded the books"
-        })
+          message: "Failed to Loaded the books",
+        });
       }
-    })
+    });
+    // this api for delete a book from the books
+    app.delete("/books/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+        const result = await bookCollection.deleteOne({
+          _id: new ObjectId(id),
+        });
+        if (result.deletedCount === 0) {
+          return res.status(404).json({
+            message: "Book not found",
+          });
+        }
+        res.status(200).json({
+          message: "Book deleted successfully",
+          deletedCount: result.deletedCount,
+        });
+      } catch (error) {
+        console.log(error);
+        res.status(500).json({
+          message: "Failed to delete the book",
+        });
+      }
+    });
+       // this api made for gate speacefic book
+    app.get("/books/:id", async (req, res) => {
+      try {
+        const id=req.params.id
+
+        const data = await bookCollection.findOne({
+            _id: new ObjectId(id),
+        });
+        res.status(200).send(data);
+      } catch (error) {
+        console.log(error);
+        res.status(500).json({
+          message: "Failed to Loaded the books",
+        });
+      }
+    });
 
     app.listen(port, () => {
       console.log(`Server running on port ${port}`);
