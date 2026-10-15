@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import SSLCommerzPayment from "sslcommerz-lts";
 import { MongoClient, ObjectId, ServerApiVersion } from "mongodb";
 
 dotenv.config();
@@ -8,7 +9,9 @@ dotenv.config();
 const app = express();
 app.use(cors());
 app.use(express.json());
-
+const store_id = process.env.SSLCOMMERZ_STORE_ID;
+const store_passwd = process.env.SSLCOMMERZ_STORE_PASSWORD;
+const is_live = false; //true for live, false for sandbox
 const port = process.env.PORT || 5000;
 const uri = process.env.MONGO_DB_URI;
 
@@ -32,6 +35,7 @@ async function runStableAPIConnect() {
     const db = client.db("book-hunt");
     const bookCollection = db.collection("books");
     const userCollection = db.collection("user");
+    const ordersCollection = db.collection("orders");
     // simple a example for store data at database
     //   const doc = {
     //   title: "Charade",
@@ -279,13 +283,13 @@ async function runStableAPIConnect() {
         });
       }
     });
-       // this api made for gate speacefic book
+    // this api made for gate speacefic book
     app.get("/books/:id", async (req, res) => {
       try {
-        const id=req.params.id
+        const id = req.params.id;
 
         const data = await bookCollection.findOne({
-            _id: new ObjectId(id),
+          _id: new ObjectId(id),
         });
         res.status(200).send(data);
       } catch (error) {
@@ -293,6 +297,131 @@ async function runStableAPIConnect() {
         res.status(500).json({
           message: "Failed to Loaded the books",
         });
+      }
+    });
+
+    // this api for update book data
+    app.patch("/books/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+        const data = req.body;
+        const result = await bookCollection.updateOne(
+          {
+            _id: new ObjectId(id),
+          },
+          {
+            $set: data,
+          },
+        );
+        res.status(200).json({
+          message: "Update Book data success full",
+        });
+      } catch (error) {
+        console.log(error);
+        res.status(500).json({
+          message: "Failed to update this book data",
+        });
+      }
+    });
+    // payment get way
+    app.post("/order", async (req, res) => {
+      const trasitionId = new ObjectId().toString();
+      const buyBook = await bookCollection.findOne({
+        _id: new ObjectId(req.body.bookId),
+      });
+      const order = req.body;
+      // console.log(buyBook,"from but book")
+      const properAddress = `district:${order.district} thana:${order.thana} address:${order.address} `;
+      try {
+        // quantity
+
+        const data = {
+          total_amount: buyBook.price * order.quantity,
+          currency: "BDT",
+          tran_id: trasitionId, // use unique tran_id for each api call
+          success_url: `${process.env.BACKEND_URL}success/payment/${trasitionId}`,
+          fail_url: `${process.env.BACKEND_URL}fail/payment/${trasitionId}`,
+          cancel_url: "http://localhost:3030/cancel/:${trasitionId}",
+          ipn_url: "http://localhost:3030/ipn",
+          shipping_method: "Courier",
+          product_name: buyBook.title,
+          product_category: "Electronic",
+          product_profile: "general",
+          cus_name: order.fullName,
+          cus_email: order.email,
+          cus_add1: order.division,
+          cus_add2: properAddress,
+          cus_city: "Dhaka",
+          cus_state: "Dhaka",
+          cus_postcode: order.postCode,
+          cus_country: "Bangladesh",
+          cus_phone: order.phone,
+          cus_fax: "01711111111",
+          ship_name: "Customer Name",
+          ship_add1: "Dhaka",
+          ship_add2: "Dhaka",
+          ship_city: "Dhaka",
+          ship_state: "Dhaka",
+          ship_postcode: 1000,
+          ship_country: "Bangladesh",
+        };
+        const sslcz = new SSLCommerzPayment(store_id, store_passwd, is_live);
+        sslcz.init(data).then(async (apiResponse) => {
+          // Redirect the user to payment gateway
+          let GatewayPageURL = apiResponse.GatewayPageURL;
+          res.send({ url: GatewayPageURL });
+          // console.log("Redirecting to: ", GatewayPageURL);
+          // added this data at mongo db after payment
+          const finalOrder = {
+            name:order.fullName,
+            phone:order.phone,
+            email:order.email,
+            bookId: buyBook._id,
+            bookTitle: buyBook.title,
+            price: buyBook.price,
+            quantity: Number(order.quantity),
+            properAddress,
+            transitionId: trasitionId,
+            isPaid: false,
+            createdAt: new Date(),
+          };
+          const result = await ordersCollection.insertOne(finalOrder);
+          console.log("compleate the post irder in DDDDDDDDDDDD");
+        });
+      } catch (error) {
+        console.error(error);
+
+        res.status(500).json({
+          message: "Mock payment failed",
+        });
+      }
+    });
+    // after success url hit
+    app.post("/success/payment/:transitionId", async (req, res) => {
+      console.log(
+        req.params.transitionId,
+        "trassition id from success url ttttttttttt",
+      );
+      const result = await ordersCollection.updateOne(
+        { transitionId: req.params.transitionId },
+        {
+          $set: {
+            isPaid: true,
+          },
+        },
+      );
+      if (result.modifiedCount > 0) {
+        res.redirect(`${process.env.FRONTEND_URL}payment/success`);
+      }
+    });
+    // after fail payment
+    app.post("/fail/payment/:tran_id", async (req, res) => {
+      console.log("fail paying system");
+      const result = await ordersCollection.deleteOne({
+        transitionId: req.params.tran_id,
+      });
+      if (result) {
+        res.redirect(`${process.env.FRONTEND_URL}payment/fail`);
       }
     });
 
