@@ -3,6 +3,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import SSLCommerzPayment from "sslcommerz-lts";
 import { MongoClient, ObjectId, ServerApiVersion } from "mongodb";
+import { createRemoteJWKSet, jwtVerify } from "jose-cjs";
 
 dotenv.config();
 
@@ -26,6 +27,37 @@ const client = new MongoClient(uri, {
     deprecationErrors: true,
   },
 });
+const JWKS = createRemoteJWKSet(
+  new URL(`${process.env.FRONTEND_URL}api/auth/jwks`),
+);
+
+// very fy jwt
+const verifyToken = async (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer")) {
+    return res.status(401).json({
+      message: "You are unAuthorize",
+    });
+  }
+  const token = authHeader?.split(" ")[1];
+  if (!token) {
+    return res.status(401).json({
+      message: "You are unAuthorize",
+    });
+  }
+
+  try{
+    const {payload}=await jwtVerify(token,JWKS)
+    console.log(payload)
+    next()
+
+  }catch(error){
+    console.log(error)
+    return res.status(401).json({
+      message: "You are unAuthorize",})
+  }
+};
+
 
 async function runStableAPIConnect() {
   try {
@@ -324,7 +356,14 @@ async function runStableAPIConnect() {
       }
     });
     // payment get way
-    app.post("/order", async (req, res) => {
+    app.post("/order",verifyToken, async (req, res) => {
+      // const authHeader = req.headers.authorization;
+
+      // console.log("Authorization Header:", authHeader);
+
+      // const token = authHeader?.split(" ")[1];
+
+      // console.log("My JWT Token:", token);
       const trasitionId = new ObjectId().toString();
       const buyBook = await bookCollection.findOne({
         _id: new ObjectId(req.body.bookId),
@@ -373,9 +412,9 @@ async function runStableAPIConnect() {
           // console.log("Redirecting to: ", GatewayPageURL);
           // added this data at mongo db after payment
           const finalOrder = {
-            name:order.fullName,
-            phone:order.phone,
-            email:order.email,
+            name: order.fullName,
+            phone: order.phone,
+            email: order.email,
             bookId: buyBook._id,
             bookTitle: buyBook.title,
             price: buyBook.price,
@@ -411,7 +450,9 @@ async function runStableAPIConnect() {
         },
       );
       if (result.modifiedCount > 0) {
-        res.redirect(`${process.env.FRONTEND_URL}payment/success`);
+        res.redirect(
+          `${process.env.FRONTEND_URL}payment/success/${req.params.transitionId}`,
+        );
       }
     });
     // after fail payment
@@ -421,9 +462,25 @@ async function runStableAPIConnect() {
         transitionId: req.params.tran_id,
       });
       if (result) {
-        res.redirect(`${process.env.FRONTEND_URL}payment/fail`);
+        res.redirect(
+          `${process.env.FRONTEND_URL}payment/fail/${req.params.tran_id}`,
+        );
       }
     });
+
+    // get user my order
+    app.get("/order/:email",async(req,res)=>{
+      try{
+        const result=await ordersCollection.find({email:req.params.email}).toArray()
+        res.status(201).json({
+          data:result
+        })
+
+      }catch(error){
+        console.log(error)
+        res.status(401).json({message:"Failed to access the order"})
+      }
+    })
 
     app.listen(port, () => {
       console.log(`Server running on port ${port}`);
