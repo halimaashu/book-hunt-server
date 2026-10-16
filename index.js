@@ -264,7 +264,7 @@ async function runStableAPIConnect() {
     });
 
     // This api for Added a new book
-    app.post("/book", async (req, res) => {
+    app.post("/book",verifyToken, async (req, res) => {
       try {
         const bookData = req.body;
         console.log(bookData, "its post from the books datas");
@@ -479,6 +479,20 @@ async function runStableAPIConnect() {
       }catch(error){
         console.log(error)
         res.status(401).json({message:"Failed to access the order"})
+      }
+    })
+    // get all orders
+    app.get("/orders",async(req,res)=>{
+      try{
+        const result=await ordersCollection.find().toArray()
+        res.status(201).json({
+         
+          data:result
+        })
+
+      }catch(error){
+        console.log(error)
+        res.status(400).json({message:"Failed to Access teh orders"})
       }
     })
 
