@@ -68,6 +68,7 @@ async function runStableAPIConnect() {
     const bookCollection = db.collection("books");
     const userCollection = db.collection("user");
     const ordersCollection = db.collection("orders");
+    const polytechnicBookSetCollection = db.collection("polytechnicBookSet");
     // simple a example for store data at database
     //   const doc = {
     //   title: "Charade",
@@ -482,7 +483,7 @@ async function runStableAPIConnect() {
       }
     })
     // get all orders
-    app.get("/orders",async(req,res)=>{
+    app.get("/orders",verifyToken, async(req,res)=>{
       try{
         const result=await ordersCollection.find().toArray()
         res.status(201).json({
@@ -493,6 +494,37 @@ async function runStableAPIConnect() {
       }catch(error){
         console.log(error)
         res.status(400).json({message:"Failed to Access teh orders"})
+      }
+    })
+    // Order a set of book for Polytechnoic
+    app.post("/polytechnic",verifyToken,async(req,res)=>{
+      try{
+        const data=req.body
+        const res=await polytechnicBookSetCollection.insertOne(data)
+        res.status(201).json({
+          message:"Book  set added success full"
+        })
+
+      }catch(error){
+        console.log(error)
+        res.status(400).json({
+          message:"Fail to save data on server"
+        })
+      }
+    })
+    app.get("/polytechnic" ,verifyToken,async(req,res)=>{
+      try{
+        const result= await polytechnicBookSetCollection.find().toArray()
+        res.status(201).json({
+          message:"ok",
+          data:result
+        })
+
+      }catch(error){
+        console.log(error)
+        res.status(400).json({
+          message:"Faild do Acces the Book order"
+        })
       }
     })
 
